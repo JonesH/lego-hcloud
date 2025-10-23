@@ -1,3 +1,5 @@
+Name = "Hetzner Cloud"
+Description = ''''''
 URL = "https://docs.hetzner.cloud/reference/dns"
 Code = "hetznerhcloud"
 Since = "v4.28.0"

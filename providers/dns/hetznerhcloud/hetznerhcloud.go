@@ -298,7 +298,7 @@ func (d *DNSProvider) get(ctx context.Context, path string, query url.Values, in
 	return d.do(ctx, http.MethodGet, path, query, nil, into)
 }
 
-func (d *DNSProvider) post(ctx context.Context, path string, payload any, into any) error {
+func (d *DNSProvider) post(ctx context.Context, path string, payload, into any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("hetznerhcloud: %w", err)

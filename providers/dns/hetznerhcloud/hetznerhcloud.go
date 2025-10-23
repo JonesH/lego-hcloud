@@ -62,6 +62,20 @@ func NewDefaultConfig() *Config {
 	}
 }
 
+// DNSProvider implements the challenge.Provider interface.
+type DNSProvider struct {
+	config  *Config
+	baseURL *url.URL
+
+	recordMu  sync.Mutex
+	recordIDs map[string]string
+
+	zoneMu  sync.Mutex
+	zoneIDs map[string]string
+
+	findZoneByFqdn func(string) (string, error)
+}
+
 // NewDNSProvider returns a DNSProvider instance configured from the environment.
 func NewDNSProvider() (*DNSProvider, error) {
 	values, err := env.Get(EnvToken)
@@ -107,20 +121,6 @@ func NewDNSProviderConfig(config *Config) (*DNSProvider, error) {
 	}
 
 	return provider, nil
-}
-
-// DNSProvider implements the challenge.Provider interface.
-type DNSProvider struct {
-	config  *Config
-	baseURL *url.URL
-
-	recordMu  sync.Mutex
-	recordIDs map[string]string
-
-	zoneMu  sync.Mutex
-	zoneIDs map[string]string
-
-	findZoneByFqdn func(string) (string, error)
 }
 
 // Timeout returns the timeout and interval to use when checking for DNS propagation.
@@ -264,17 +264,19 @@ func (d *DNSProvider) getZoneID(ctx context.Context, zoneName string) (string, e
 		}
 
 		for _, zone := range response.Zones {
-			if strings.EqualFold(zone.Name, zoneName) {
-				id, err := parseIdentifier(zone.ID)
-				if err != nil {
-					return "", fmt.Errorf("hetznerhcloud: %w", err)
-				}
-
-				d.zoneMu.Lock()
-				d.zoneIDs[zoneKey] = id
-				d.zoneMu.Unlock()
-				return id, nil
+			if !strings.EqualFold(zone.Name, zoneName) {
+				continue
 			}
+
+			id, err := parseIdentifier(zone.ID)
+			if err != nil {
+				return "", fmt.Errorf("hetznerhcloud: %w", err)
+			}
+
+			d.zoneMu.Lock()
+			d.zoneIDs[zoneKey] = id
+			d.zoneMu.Unlock()
+			return id, nil
 		}
 
 		nextPage := 0
@@ -316,45 +318,61 @@ func (d *DNSProvider) do(ctx context.Context, method, path string, query url.Val
 	}
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		req, err := d.newRequest(ctx, method, path, query, body)
-		if err != nil {
-			return err
-		}
-
-		resp, err := d.config.HTTPClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("hetznerhcloud: api request failed: %w", err)
-		}
-
-		data, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			return fmt.Errorf("hetznerhcloud: failed to read response: %w", readErr)
-		}
-
-		if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
-			log.Warnf("hetznerhcloud: request %s %s failed with status %s (attempt %d/%d)", method, pathWithQuery, resp.Status, attempt, maxRetries)
-			if attempt == maxRetries {
-				return fmt.Errorf("hetznerhcloud: API request %s %s failed: %s", method, pathWithQuery, resp.Status)
+		if err := d.doRequest(ctx, method, path, query, pathWithQuery, body, into, attempt); err != nil {
+			if attempt == maxRetries || !d.isRetryable(err) {
+				return err
 			}
 			continue
 		}
-
-		if resp.StatusCode >= 400 {
-			message := strings.TrimSpace(string(data))
-			if message == "" {
-				message = resp.Status
-			}
-			return fmt.Errorf("hetznerhcloud: API request %s %s failed: %s", method, pathWithQuery, message)
-		}
-
-		if into != nil && len(data) > 0 {
-			if err := json.Unmarshal(data, into); err != nil {
-				return fmt.Errorf("hetznerhcloud: decode response: %w", err)
-			}
-		}
-
 		return nil
+	}
+
+	return nil
+}
+
+func (d *DNSProvider) isRetryable(err error) bool {
+	// Check if error is a retryable server error
+	return strings.Contains(err.Error(), "status 5")
+}
+
+func (d *DNSProvider) doRequest(ctx context.Context, method, path string, query url.Values, pathWithQuery string, body []byte, into any, attempt int) error {
+	req, err := d.newRequest(ctx, method, path, query, body)
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.config.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("hetznerhcloud: api request failed: %w", err)
+	}
+
+	data, readErr := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if readErr != nil {
+		return fmt.Errorf("hetznerhcloud: failed to read response: %w", readErr)
+	}
+
+	return d.handleResponse(resp, data, method, pathWithQuery, into, attempt)
+}
+
+func (d *DNSProvider) handleResponse(resp *http.Response, data []byte, method, pathWithQuery string, into any, attempt int) error {
+	if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
+		log.Warnf("hetznerhcloud: request %s %s failed with status %s (attempt %d/%d)", method, pathWithQuery, resp.Status, attempt, maxRetries)
+		return fmt.Errorf("hetznerhcloud: API request %s %s failed: status 5xx", method, pathWithQuery)
+	}
+
+	if resp.StatusCode >= 400 {
+		message := strings.TrimSpace(string(data))
+		if message == "" {
+			message = resp.Status
+		}
+		return fmt.Errorf("hetznerhcloud: API request %s %s failed: %s", method, pathWithQuery, message)
+	}
+
+	if into != nil && len(data) > 0 {
+		if err := json.Unmarshal(data, into); err != nil {
+			return fmt.Errorf("hetznerhcloud: decode response: %w", err)
+		}
 	}
 
 	return nil

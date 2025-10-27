@@ -62,14 +62,14 @@ func (c *Client) CreateRecord(ctx context.Context, zoneID, name, value string, t
 			ID json.RawMessage `json:"id"`
 		} `json:"record"`
 	}
-	if err := c.post(ctx, fmt.Sprintf("/v1/zones/%s/records", zoneID), payload, &resp); err != nil {
+	if err := c.post(ctx, fmt.Sprintf("/v1/zones/%s/rrsets", zoneID), payload, &resp); err != nil {
 		return "", err
 	}
 	return string(bytes.Trim(resp.Record.ID, "\"")), nil
 }
 
 func (c *Client) DeleteRecord(ctx context.Context, zoneID, recordID string) error {
-	return c.delete(ctx, fmt.Sprintf("/v1/zones/%s/records/%s", zoneID, recordID))
+	return c.delete(ctx, fmt.Sprintf("/v1/zones/%s/rrsets/%s", zoneID, recordID))
 }
 
 func (c *Client) get(ctx context.Context, path string, query url.Values, result any) error {

@@ -19,7 +19,7 @@ func TestDNSProvider_Present_Success(t *testing.T) {
 		}))
 	})
 
-	mux.HandleFunc("/v1/zones/123/records", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/zones/123/rrsets", func(w http.ResponseWriter, r *http.Request) {
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 			"record": map[string]any{"id": "456"},
 		}))
@@ -48,7 +48,7 @@ func TestDNSProvider_CleanUp_Success(t *testing.T) {
 		}))
 	})
 
-	mux.HandleFunc("/v1/zones/123/records", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/zones/123/rrsets", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
 				"record": map[string]any{"id": "456"},
@@ -58,7 +58,7 @@ func TestDNSProvider_CleanUp_Success(t *testing.T) {
 		}
 	})
 
-	mux.HandleFunc("/v1/zones/123/records/456", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/v1/zones/123/rrsets/456", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 

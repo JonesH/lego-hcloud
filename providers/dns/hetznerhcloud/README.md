@@ -87,7 +87,7 @@ client.Challenge.SetDNS01Provider(provider)
 Creates TXT record for ACME challenge:
 
 ```http
-POST /v1/zones/{zoneID}/records
+POST /v1/zones/{zoneID}/rrsets
 {
   "name": "_acme-challenge",
   "type": "TXT",
@@ -101,7 +101,7 @@ POST /v1/zones/{zoneID}/records
 Removes TXT record after validation:
 
 ```http
-DELETE /v1/zones/{zoneID}/records/{recordID}
+DELETE /v1/zones/{zoneID}/rrsets/{recordID}
 ```
 
 ## Features

@@ -4,3 +4,9 @@
 .vscode/
 dist/
 builds/
+
+# Claude Code session files
+.claude/
+
+# Serena MCP server data
+.serena/
